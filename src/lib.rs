@@ -1,8 +1,34 @@
 use std::sync::Arc;
+
 struct PersistentStackNode<T> {
     data: Arc<T>,
     parent: Option<Arc<PersistentStackNode<T>>>,
 }
+
+/// # Concurrent persistent stack
+/// Supportted operations:
+/// - clone *O*(1)
+/// - push *O*(1)
+/// - iterate *O*(n)
+///
+/// ```rust
+/// use persistent_stack::PersistentStack;
+///
+/// let s1 = PersistentStack::new();
+/// s1.push(1);
+/// let s2 = s1.clone();
+/// std::thread::spawn(|| {
+///     s2.push(2);
+///     assert_eq!(s2.clone().map(|x| *x).collect(), vec![2, 1]);
+///     std::thread::sleep(20);
+///     s2.push(4);
+///     assert_eq!(s2.clone().map(|x| *x).collect(), vec![4, 2, 1]);
+/// })
+/// assert_eq!(s2.clone().map(|x| *x).collect(), vec![3, 1]);
+/// std::thread::sleep(20);
+/// s2.push(5);
+/// assert_eq!(s2.clone().map(|x| *x).collect(), vec![5, 2, 1]);
+/// ```
 pub struct PersistentStack<T>(Option<Arc<PersistentStackNode<T>>>);
 
 impl<T> Default for PersistentStack<T> {
@@ -18,11 +44,20 @@ impl<T> Clone for PersistentStack<T> {
 }
 
 impl<T> PersistentStack<T> {
+    /// Creates new empty persistent stack
+    ///
+    /// ```rust
+    /// use persistent_stack::PersistentStack;
+    ///
+    /// let s = PersistentStack::<i32>::new();
+    /// assert!(s.into_iter().next().is_none())
+    /// ```
     pub fn new() -> PersistentStack<T> {
         Self::default()
     }
 }
 
+/// Iterator over persistent stack
 pub struct PersistentStackIter<T>(PersistentStack<T>);
 
 impl<T> Clone for PersistentStackIter<T> {
@@ -58,6 +93,18 @@ impl<T> Iterator for PersistentStackIter<T> {
 }
 
 impl<T> PersistentStack<T> {
+    /// Pushes `data` to end of `self` (affects only current copy of stack)
+    ///
+    /// ```rust
+    /// use persistent_stack::PersistentStack;
+    /// use std::sync::Arc;
+    ///
+    /// let mut s1 = PersistentStack::new();
+    /// s1.push(1);
+    /// let mut s2 = s1.clone();
+    /// s2.push(2);
+    /// assert_eq!(s1.into_iter().collect(), [Arc::new(1)]);
+    /// assert_eq!(s2.into_iter().collect(), [Arc::new(2), Arc::new(1)]);
     pub fn push(&mut self, data: T) {
         let node = PersistentStackNode {
             data: Arc::new(data),
