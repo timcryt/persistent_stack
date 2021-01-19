@@ -1,8 +1,14 @@
 use std::sync::Arc;
 
 struct PersistentStackNode<T> {
-    data: Arc<T>,
+    data: T,
     parent: Option<Arc<PersistentStackNode<T>>>,
+}
+
+impl<T> PersistentStackNode<T> {
+    fn data_as_ref(&self) -> &T {
+        &self.data
+    }
 }
 
 /// # Concurrent persistent stack
@@ -14,20 +20,21 @@ struct PersistentStackNode<T> {
 /// ```rust
 /// use persistent_stack::PersistentStack;
 ///
-/// let s1 = PersistentStack::new();
+/// let mut s1 = PersistentStack::new();
 /// s1.push(1);
-/// let s2 = s1.clone();
-/// std::thread::spawn(|| {
+/// let mut s2 = s1.clone();
+/// std::thread::spawn(move || {
 ///     s2.push(2);
-///     assert_eq!(s2.clone().map(|x| *x).collect(), vec![2, 1]);
-///     std::thread::sleep(20);
+///     assert_eq!(s2.clone().into_iter().copied().collect::<Vec<_>>(), vec![2, 1]);
+///     std::thread::sleep(std::time::Duration::from_millis(20));
 ///     s2.push(4);
-///     assert_eq!(s2.clone().map(|x| *x).collect(), vec![4, 2, 1]);
-/// })
-/// assert_eq!(s2.clone().map(|x| *x).collect(), vec![3, 1]);
-/// std::thread::sleep(20);
-/// s2.push(5);
-/// assert_eq!(s2.clone().map(|x| *x).collect(), vec![5, 2, 1]);
+///     assert_eq!(s2.clone().into_iter().copied().collect::<Vec<_>>(), vec![4, 2, 1]);
+/// });
+/// s1.push(3);
+/// assert_eq!(s1.clone().into_iter().copied().collect::<Vec<_>>(), vec![3, 1]);
+/// std::thread::sleep(std::time::Duration::from_millis(20));
+/// s1.push(5);
+/// assert_eq!(s1.clone().into_iter().copied().collect::<Vec<_>>(), vec![5, 3, 1]);
 /// ```
 pub struct PersistentStack<T>(Option<Arc<PersistentStackNode<T>>>);
 
@@ -55,40 +62,42 @@ impl<T> PersistentStack<T> {
     pub fn new() -> PersistentStack<T> {
         Self::default()
     }
-}
 
-/// Iterator over persistent stack
-pub struct PersistentStackIter<T>(PersistentStack<T>);
+    fn peek(&self) -> Option<&T> {
+        self.0.as_ref().map(|x| x.data_as_ref())
+    }
 
-impl<T> Clone for PersistentStackIter<T> {
-    fn clone(&self) -> Self {
-        Self(self.0.clone())
+    fn pop_drop(&mut self) {
+        *self = PersistentStack(match self.0.as_ref() {
+            None => None,
+            Some(r) => r.as_ref().parent.clone()
+        });
     }
 }
 
-impl<T> IntoIterator for PersistentStack<T> {
-    type IntoIter = PersistentStackIter<T>;
-    type Item = Arc<T>;
+/// Iterator over persistent stack
+pub struct PersistentStackIter<'a, T>(&'a PersistentStack<T>);
+
+impl<'a, T> IntoIterator for &'a PersistentStack<T> {
+    type IntoIter = PersistentStackIter<'a, T>;
+    type Item = &'a T;
 
     fn into_iter(self) -> Self::IntoIter {
         PersistentStackIter(self)
     }
 }
 
-impl<T> Iterator for PersistentStackIter<T> {
-    type Item = Arc<T>;
+impl<'a, T> Iterator for PersistentStackIter<'a, T> {
+    type Item = &'a T;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let data = self.clone().0 .0;
+        let res = self.0.peek();
 
-        *self = PersistentStackIter(PersistentStack(
-            data.as_ref()
-                .map(|x| x.parent.as_ref())
-                .flatten()
-                .map(|x| Arc::clone(x)),
-        ));
+        let mut t = Box::new(self.0.clone());
+        t.pop_drop();
+        self.0 = Box::leak(t);
 
-        data.map(|x| Arc::clone(&x.data))
+        res
     }
 }
 
@@ -103,11 +112,11 @@ impl<T> PersistentStack<T> {
     /// s1.push(1);
     /// let mut s2 = s1.clone();
     /// s2.push(2);
-    /// assert_eq!(s1.into_iter().collect(), [Arc::new(1)]);
-    /// assert_eq!(s2.into_iter().collect(), [Arc::new(2), Arc::new(1)]);
+    /// assert_eq!(s1.into_iter().collect::<Vec<_>>(), [&1]);
+    /// assert_eq!(s2.into_iter().collect::<Vec<_>>(), [&2, &1]);
     pub fn push(&mut self, data: T) {
         let node = PersistentStackNode {
-            data: Arc::new(data),
+            data,
             parent: self.0.as_ref().map(|x| Arc::clone(x)),
         };
         *self = PersistentStack(Some(Arc::new(node)));
