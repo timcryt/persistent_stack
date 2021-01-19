@@ -66,3 +66,17 @@ impl<T> PersistentStack<T> {
         *self = PersistentStack(Some(Arc::new(node)));
     }
 }
+
+mod tests {
+    #[test]
+    fn test_persistent_stack() {
+        let mut s1 = crate::PersistentStack::new();
+        s1.push(1);
+        s1.push(2);
+        let mut s2 = s1.clone();
+        s1.push(3);
+        s2.push(4);
+        assert_eq!(s1.into_iter().map(|x| *x).collect::<Vec<_>>(), [3, 2, 1]);
+        assert_eq!(s2.into_iter().map(|x| *x).collect::<Vec<_>>(), [4, 2, 1]);
+    }
+}
