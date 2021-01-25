@@ -19,16 +19,16 @@ struct PersistentStackNode<T> {
 /// let mut s2 = s1.clone();
 /// std::thread::spawn(move || {
 ///     s2.push(2);
-///     assert_eq!(s2.clone().into_iter().copied().collect::<Vec<_>>(), vec![2, 1]);
+///     assert_eq!(s2.iter().copied().collect::<Vec<_>>(), vec![2, 1]);
 ///     std::thread::sleep(std::time::Duration::from_millis(20));
 ///     s2.push(4);
-///     assert_eq!(s2.clone().into_iter().copied().collect::<Vec<_>>(), vec![4, 2, 1]);
+///     assert_eq!(s2.iter().copied().collect::<Vec<_>>(), vec![4, 2, 1]);
 /// });
 /// s1.push(3);
-/// assert_eq!(s1.clone().into_iter().copied().collect::<Vec<_>>(), vec![3, 1]);
+/// assert_eq!(s1.iter().copied().collect::<Vec<_>>(), vec![3, 1]);
 /// std::thread::sleep(std::time::Duration::from_millis(20));
 /// s1.push(5);
-/// assert_eq!(s1.clone().into_iter().copied().collect::<Vec<_>>(), vec![5, 3, 1]);
+/// assert_eq!(s1.iter().copied().collect::<Vec<_>>(), vec![5, 3, 1]);
 /// ```
 pub struct PersistentStack<T>(Option<Arc<PersistentStackNode<T>>>);
 
@@ -75,6 +75,21 @@ impl<T> PersistentStack<T> {
             parent: self.0.as_ref().map(|x| Arc::clone(x)),
         };
         *self = PersistentStack(Some(Arc::new(node)));
+    }
+
+    /// Creates iterator over `self` by reference
+    ///
+    /// ```rust
+    /// use persistent_stack::PersistentStack;
+    ///
+    /// let mut s = PersistentStack::new();
+    /// s.push(1);
+    /// s.push(2);
+    /// s.push(3);
+    /// assert_eq!(s.iter().collect::<Vec<_>>(), [&3, &2, &1]);
+    /// s.push(4); // s didn't move out
+    pub fn iter(&self) -> PersistentStackIter<T> {
+        PersistentStackIter(self.0.as_deref())
     }
 }
 
