@@ -5,12 +5,6 @@ struct PersistentStackNode<T> {
     parent: Option<Arc<PersistentStackNode<T>>>,
 }
 
-impl<T> PersistentStackNode<T> {
-    fn data_as_ref(&self) -> &T {
-        &self.data
-    }
-}
-
 /// # Concurrent persistent stack
 /// Supportted operations:
 /// - clone *O*(1)
@@ -62,28 +56,17 @@ impl<T> PersistentStack<T> {
     pub fn new() -> PersistentStack<T> {
         Self::default()
     }
-
-    fn peek(&self) -> Option<&T> {
-        self.0.as_ref().map(|x| x.data_as_ref())
-    }
-
-    fn pop_drop(&mut self) {
-        *self = PersistentStack(match self.0.as_ref() {
-            None => None,
-            Some(r) => r.as_ref().parent.clone()
-        });
-    }
 }
 
 /// Iterator over persistent stack
-pub struct PersistentStackIter<'a, T>(&'a PersistentStack<T>);
+pub struct PersistentStackIter<'a, T>(Option<&'a PersistentStackNode<T>>);
 
 impl<'a, T> IntoIterator for &'a PersistentStack<T> {
     type IntoIter = PersistentStackIter<'a, T>;
     type Item = &'a T;
 
     fn into_iter(self) -> Self::IntoIter {
-        PersistentStackIter(self)
+        PersistentStackIter(self.0.as_deref())
     }
 }
 
@@ -91,13 +74,10 @@ impl<'a, T> Iterator for PersistentStackIter<'a, T> {
     type Item = &'a T;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let res = self.0.peek();
-
-        let mut t = Box::new(self.0.clone());
-        t.pop_drop();
-        self.0 = Box::leak(t);
-
-        res
+        self.0.map(|node| {
+            self.0 = node.parent.as_deref();
+            &node.data
+        })
     }
 }
 
