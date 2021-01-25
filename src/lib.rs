@@ -56,6 +56,26 @@ impl<T> PersistentStack<T> {
     pub fn new() -> PersistentStack<T> {
         Self::default()
     }
+
+    /// Pushes `data` to end of `self` (affects only current copy of stack)
+    ///
+    /// ```rust
+    /// use persistent_stack::PersistentStack;
+    /// use std::sync::Arc;
+    ///
+    /// let mut s1 = PersistentStack::new();
+    /// s1.push(1);
+    /// let mut s2 = s1.clone();
+    /// s2.push(2);
+    /// assert_eq!(s1.into_iter().collect::<Vec<_>>(), [&1]);
+    /// assert_eq!(s2.into_iter().collect::<Vec<_>>(), [&2, &1]);
+    pub fn push(&mut self, data: T) {
+        let node = PersistentStackNode {
+            data,
+            parent: self.0.as_ref().map(|x| Arc::clone(x)),
+        };
+        *self = PersistentStack(Some(Arc::new(node)));
+    }
 }
 
 /// Iterator over persistent stack
@@ -78,28 +98,6 @@ impl<'a, T> Iterator for PersistentStackIter<'a, T> {
             self.0 = node.parent.as_deref();
             &node.data
         })
-    }
-}
-
-impl<T> PersistentStack<T> {
-    /// Pushes `data` to end of `self` (affects only current copy of stack)
-    ///
-    /// ```rust
-    /// use persistent_stack::PersistentStack;
-    /// use std::sync::Arc;
-    ///
-    /// let mut s1 = PersistentStack::new();
-    /// s1.push(1);
-    /// let mut s2 = s1.clone();
-    /// s2.push(2);
-    /// assert_eq!(s1.into_iter().collect::<Vec<_>>(), [&1]);
-    /// assert_eq!(s2.into_iter().collect::<Vec<_>>(), [&2, &1]);
-    pub fn push(&mut self, data: T) {
-        let node = PersistentStackNode {
-            data,
-            parent: self.0.as_ref().map(|x| Arc::clone(x)),
-        };
-        *self = PersistentStack(Some(Arc::new(node)));
     }
 }
 
