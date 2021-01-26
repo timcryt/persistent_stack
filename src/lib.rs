@@ -9,6 +9,7 @@ struct PersistentStackNode<T> {
 /// Supportted operations:
 /// - clone *O*(1)
 /// - push *O*(1)
+/// - pop *O*(1)
 /// - iterate *O*(n)
 ///
 /// ```rust
@@ -44,6 +45,12 @@ impl<T> Clone for PersistentStack<T> {
     }
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum PersistentStackPopError {
+    CantUnwrap,
+    RootIsReached,
+}
+
 impl<T> PersistentStack<T> {
     /// Creates new empty persistent stack
     ///
@@ -75,6 +82,42 @@ impl<T> PersistentStack<T> {
             parent: self.0.as_ref().map(|x| Arc::clone(x)),
         };
         *self = PersistentStack(Some(Arc::new(node)));
+    }
+
+    /// Pops value from stack and tries to return it
+    /// 
+    /// Returns `Ok(data)` if only this copy of stack owned `data`
+    ///
+    /// Returns `Err(CantUnwrap)` if there are other copies, which own `data`
+    ///
+    /// Returns `Err(RootIsReached)` if nothing to pop
+    ///
+    /// ```rust
+    /// use persistent_stack::{PersistentStack, PersistentStackPopError::*};
+    ///
+    /// let mut s1 = PersistentStack::new();
+    /// s1.push(1);
+    /// s1.push(2);
+    /// let mut s2 = s1.clone();
+    /// s1.push(3);
+    /// s2.push(4);
+    /// assert_eq!(s2.pop(), Ok(4)); // only s2 owned 4
+    /// assert_eq!(s2.pop(), Err(CantUnwrap)); // s1 also owns 2
+    /// let mut s3 = s2.clone();
+    /// assert_eq!(s2.pop(), Err(CantUnwrap)); // s1 also owns 1
+    /// assert_eq!(s2.pop(), Err(RootIsReached)); // There are no elements in s2
+    /// s3.push(5);
+    /// assert_eq!(s3.iter().copied().collect::<Vec<_>>(), vec![5, 1]); // s3 is cloned, when s2 was [1]
+    pub fn pop(&mut self) -> Result<T, PersistentStackPopError> {
+        let s = self.0.take();
+        s
+            .map(|node| {
+                self.0 = node.parent.as_ref().cloned();
+                Arc::try_unwrap(node)
+                    .map(|node| node.data)
+                    .map_err(|_| PersistentStackPopError::CantUnwrap)
+            })
+            .unwrap_or(Err(PersistentStackPopError::RootIsReached))
     }
 
     /// Creates iterator over `self` by reference
