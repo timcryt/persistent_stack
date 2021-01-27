@@ -1,10 +1,11 @@
 [package]
 name = "persistent_stack"
-version = "0.1.0"
+version = "0.1.1"
 license = "MIT"
 authors = ["timcryt <tymcrit@gmail.com>"]
 edition = "2018"
 description = "Concurrent persistent stack"
+readme = "README.md"
 repository = "https://github.com/timcryt/persistent_stack"
 
 [dependencies]
